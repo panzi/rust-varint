@@ -57,8 +57,8 @@ pub trait Intern {
 
 pub struct InternHelper<const N: u8> {}
 
-macro_rules! make_minint {
-    (@impl_minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal) => {
+macro_rules! make_varuint {
+    (@impl_varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal) => {
         impl Intern for InternHelper<$bits> {
             type UInt = $type;
             const MIN:  Self::UInt = $type::MIN;
@@ -68,9 +68,9 @@ macro_rules! make_minint {
             const BITS: u32 = $bits;
         }
 
-        make_minint!(@from $bits, $($from_types),*);
-        make_minint!(@try_from $bits, $($try_from_types),*);
-        make_minint!(@into $bits, $($into_types),*);
+        make_varuint!(@from $bits, $($from_types),*);
+        make_varuint!(@try_from $bits, $($try_from_types),*);
+        make_varuint!(@into $bits, $($into_types),*);
 
         impl Add for VarUInt<$bits> {
             type Output = Self;
@@ -242,15 +242,15 @@ macro_rules! make_minint {
         }
     };
 
-    (@minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ] $(,)?) => {};
+    (@varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ] $(,)?) => {};
 
-    (@minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal $(,)?) => {
-        make_minint!(@impl_minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
+    (@varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal $(,)?) => {
+        make_varuint!(@impl_varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
     };
 
-    (@minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal, $($more:literal),+) => {
-        make_minint!(@impl_minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
-        make_minint!(@minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($more),+);
+    (@varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal, $($more:literal),+) => {
+        make_varuint!(@impl_varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
+        make_varuint!(@varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($more),+);
     };
 
     // ==== from ===============================================================
@@ -282,12 +282,12 @@ macro_rules! make_minint {
     (@from $bits:literal $(,)?) => {};
 
     (@from $bits:literal, $type:ident $(,)?) => {
-        make_minint!(@impl_from $bits, $type);
+        make_varuint!(@impl_from $bits, $type);
     };
 
     (@from $bits:literal, $type:ident, $($more:ident),*) => {
-        make_minint!(@impl_from $bits, $type);
-        make_minint!(@from $bits, $($more),*);
+        make_varuint!(@impl_from $bits, $type);
+        make_varuint!(@from $bits, $($more),*);
     };
 
     // ==== try from ===========================================================
@@ -311,12 +311,12 @@ macro_rules! make_minint {
     (@try_from $bits:literal $(,)?) => {};
 
     (@try_from $bits:literal, $type:ident $(,)?) => {
-        make_minint!(@impl_try_from $bits, $type);
+        make_varuint!(@impl_try_from $bits, $type);
     };
 
     (@try_from $bits:literal, $type:ident, $($more:ident),*) => {
-        make_minint!(@impl_try_from $bits, $type);
-        make_minint!(@try_from $bits, $($more),*);
+        make_varuint!(@impl_try_from $bits, $type);
+        make_varuint!(@try_from $bits, $($more),*);
     };
 
     // ==== into ===============================================================
@@ -347,43 +347,83 @@ macro_rules! make_minint {
     (@into $bits:literal $(,)?) => {};
 
     (@into $bits:literal, $type:ident $(,)?) => {
-        make_minint!(@impl_into $bits, $type);
+        make_varuint!(@impl_into $bits, $type);
     };
 
     (@into $bits:literal, $type:ident, $($more:ident),*) => {
-        make_minint!(@impl_into $bits, $type);
-        make_minint!(@into $bits, $($more),*);
+        make_varuint!(@impl_into $bits, $type);
+        make_varuint!(@into $bits, $($more),*);
     };
 
     // ==== start ==============================================================
-    ($type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], [ $($bits:literal),* ]) => {
-        make_minint!(@minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($bits),*);
+    ($type:ident,
+        from: [ $($from_types:ident),* ],
+        try_from: [ $($try_from_types:ident),* ],
+        into: [ $($into_types:ident),* ],
+        bits: [ $($bits:literal),* ]
+    ) => {
+        make_varuint!(@varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($bits),*);
     };
 }
 
-make_minint!(u8, [], [u8, u16, u32, u64, u128], [u8, u16, u32, u64, u128],
-    [1, 2, 3, 4, 6, 7]);
-make_minint!(u8, [u8], [u16, u32, u64, u128], [u8, u16, u32, u64, u128], [8]);
+make_varuint!(u8,
+    from: [],
+    try_from: [u8, u16, u32, u64, u128],
+    into: [u8, u16, u32, u64, u128],
+    bits: [1, 2, 3, 4, 6, 7]);
+make_varuint!(u8,
+    from: [u8],
+    try_from: [u16, u32, u64, u128],
+    into: [u8, u16, u32, u64, u128],
+    bits: [8]);
 
-make_minint!(u16, [u8], [u16, u32, u64, u128], [u16, u32, u64, u128],
-    [9, 10, 11, 12, 13, 14, 15]);
-make_minint!(u16, [u8, u16], [u32, u64, u128], [u16, u32, u64, u128], [16]);
+make_varuint!(u16,
+    from: [u8],
+    try_from: [u16, u32, u64, u128],
+    into: [u16, u32, u64, u128],
+    bits: [9, 10, 11, 12, 13, 14, 15]);
+make_varuint!(u16,
+    from: [u8, u16],
+    try_from: [u32, u64, u128],
+    into: [u16, u32, u64, u128],
+    bits: [16]);
 
-make_minint!(u32, [u8, u16], [u32, u64, u128], [u32, u64, u128],
-    [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
-make_minint!(u32, [u8, u16, u32], [u64, u128], [u32, u64, u128], [32]);
+make_varuint!(u32,
+    from: [u8, u16],
+    try_from: [u32, u64, u128],
+    into: [u32, u64, u128],
+    bits: [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
+make_varuint!(u32,
+    from: [u8, u16, u32],
+    try_from: [u64, u128],
+    into: [u32, u64, u128],
+    bits: [32]);
 
-make_minint!(u64, [u8, u16, u32], [u64, u128], [u64, u128],
-    [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-     49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]);
-make_minint!(u64, [u8, u16, u32, u64], [u128], [u64, u128], [64]);
+make_varuint!(u64,
+    from: [u8, u16, u32],
+    try_from: [u64, u128],
+    into: [u64, u128],
+    bits: [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+           49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]);
+make_varuint!(u64,
+    from: [u8, u16, u32, u64],
+    try_from: [u128],
+    into: [u64, u128],
+    bits: [64]);
 
-make_minint!(u128, [u8, u16, u32, u64], [], [u128],
-    [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82,
-     83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100,
-     101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
-     116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]);
-make_minint!(u128, [u8, u16, u32, u64, u128], [], [u128], [128]);
+make_varuint!(u128,
+    from: [u8, u16, u32, u64],
+    try_from: [],
+    into: [u128],
+    bits: [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82,
+           83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100,
+           101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
+           116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]);
+make_varuint!(u128,
+    from: [u8, u16, u32, u64, u128],
+    try_from: [],
+    into: [u128],
+    bits: [128]);
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
