@@ -297,3 +297,35 @@ impl ShrAssign for U48 {
         self.value >>= rhs.value;
     }
 }
+
+impl Shl<usize> for U48 {
+    type Output = Self;
+
+    #[inline]
+    fn shl(self, rhs: usize) -> Self::Output {
+        U48 { value: (self.value << rhs) & MASK_U48 }
+    }
+}
+
+impl ShlAssign<usize> for U48 {
+    #[inline]
+    fn shl_assign(&mut self, rhs: usize) {
+        self.value = (self.value << rhs) & MASK_U48;
+    }
+}
+
+impl Shr<usize> for U48 {
+    type Output = Self;
+
+    #[inline]
+    fn shr(self, rhs: usize) -> Self::Output {
+        U48 { value: self.value >> rhs }
+    }
+}
+
+impl ShrAssign<usize> for U48 {
+    #[inline]
+    fn shr_assign(&mut self, rhs: usize) {
+        self.value >>= rhs;
+    }
+}

@@ -240,6 +240,38 @@ macro_rules! make_varuint {
                 self.value >>= rhs.value;
             }
         }
+
+        impl Shl<usize> for VarUInt<$bits> {
+            type Output = Self;
+
+            #[inline]
+            fn shl(self, rhs: usize) -> Self::Output {
+                Self { value: (self.value << rhs) & Self::MAX.value }
+            }
+        }
+
+        impl ShlAssign<usize> for VarUInt<$bits> {
+            #[inline]
+            fn shl_assign(&mut self, rhs: usize) {
+                self.value = (self.value << rhs) & Self::MAX.value;
+            }
+        }
+
+        impl Shr<usize> for VarUInt<$bits> {
+            type Output = Self;
+
+            #[inline]
+            fn shr(self, rhs: usize) -> Self::Output {
+                Self { value: self.value >> rhs }
+            }
+        }
+
+        impl ShrAssign<usize> for VarUInt<$bits> {
+            #[inline]
+            fn shr_assign(&mut self, rhs: usize) {
+                self.value >>= rhs;
+            }
+        }
     };
 
     (@varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ] $(,)?) => {};
@@ -262,21 +294,6 @@ macro_rules! make_varuint {
                 VarUInt { value: value.into() }
             }
         }
-
-        /*
-        impl TryInto<$type> for VarUInt<$bits> {
-            type Error = Error;
-
-            #[inline]
-            fn try_into(self) -> Result<$type, Self::Error> {
-                if self.value > $type::MAX.into() {
-                    return Err(Error::ValueTooBig);
-                }
-
-                return Ok(self.value as $type);
-            }
-        }
-         */
     };
 
     (@from $bits:literal $(,)?) => {};
@@ -327,21 +344,6 @@ macro_rules! make_varuint {
                 self.value as $type
             }
         }
-
-        /*
-        impl TryFrom<$type> for VarUInt<$bits> {
-            type Error = Error;
-
-            #[inline]
-            fn try_from(value: $type) -> Result<Self, Self::Error> {
-                if value > Self::MAX {
-                    return Err(Error::ValueTooBig);
-                }
-
-                return Ok(VarUInt { value });
-            }
-        }
-        */
     };
 
     (@into $bits:literal $(,)?) => {};
@@ -452,3 +454,36 @@ impl<const N: u8> Display for VarUInt<N> where InternHelper::<{N}>: Intern {
         Display::fmt(&self.value, f)
     }
 }
+/*
+impl<const N: u8, const M: u8> TryFrom<VarUInt<M>> for VarUInt<N> where Assert::<{M > N}>: IsTrue {
+    type Error = Error;
+
+    fn try_from(value: VarUInt<M>) -> Result<Self, Self::Error> {
+        if let Ok(value) = value.try_into() {
+            if value > Self::MAX.value {
+                return Err(Error::ValueTooBig);
+            }
+            return Ok(VarUInt { value });
+        }
+        return Err(Error::ValueTooBig);
+    }
+}
+*/
+/*
+impl<const N: u8, const M: u8> From<VarUInt<M>> for VarUInt<N>
+where InternHelper::<{N}>: Intern,
+      InternHelper::<{M}>: Intern,
+      Assert::<{M < N}>: IsTrue {
+    #[inline]
+    fn from(value: VarUInt<M>) -> Self {
+        Self { value: value.value.into() }
+    }
+}
+*/
+/*
+enum Assert<const COND: bool> {}
+
+trait IsTrue {}
+
+impl IsTrue for Assert<true> {}
+*/
