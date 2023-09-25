@@ -58,7 +58,7 @@ pub trait Intern {
 pub struct InternHelper<const N: u8> {}
 
 macro_rules! make_minint {
-    (@impl_minint $type:ident, [ $($from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal) => {
+    (@impl_minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal) => {
         impl Intern for InternHelper<$bits> {
             type UInt = $type;
             const MIN:  Self::UInt = $type::MIN;
@@ -69,6 +69,7 @@ macro_rules! make_minint {
         }
 
         make_minint!(@from $bits, $($from_types),*);
+        make_minint!(@try_from $bits, $($try_from_types),*);
         make_minint!(@into $bits, $($into_types),*);
 
         impl Add for VarUInt<$bits> {
@@ -241,15 +242,15 @@ macro_rules! make_minint {
         }
     };
 
-    (@minint $type:ident, [ $($from_types:ident),* ], [ $($into_types:ident),* ] $(,)?) => {};
+    (@minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ] $(,)?) => {};
 
-    (@minint $type:ident, [ $($from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal $(,)?) => {
-        make_minint!(@impl_minint $type, [ $($from_types),* ], [ $($into_types),* ], $bits);
+    (@minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal $(,)?) => {
+        make_minint!(@impl_minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
     };
 
-    (@minint $type:ident, [ $($from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal, $($more:literal),+) => {
-        make_minint!(@impl_minint $type, [ $($from_types),* ], [ $($into_types),* ], $bits);
-        make_minint!(@minint $type, [ $($from_types),* ], [ $($into_types),* ], $($more),+);
+    (@minint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal, $($more:literal),+) => {
+        make_minint!(@impl_minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
+        make_minint!(@minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($more),+);
     };
 
     // ==== from ===============================================================
@@ -289,6 +290,35 @@ macro_rules! make_minint {
         make_minint!(@from $bits, $($more),*);
     };
 
+    // ==== try from ===========================================================
+    (@impl_try_from $bits:literal, $type:ident) => {
+        impl TryFrom<$type> for VarUInt<$bits> {
+            type Error = Error;
+
+            #[inline]
+            fn try_from(value: $type) -> Result<Self, Self::Error> {
+                if let Ok(value) = value.try_into() {
+                    if value > Self::MAX.value {
+                        return Err(Error::ValueTooBig);
+                    }
+                    return Ok(VarUInt { value });
+                }
+                return Err(Error::ValueTooBig);
+            }
+        }
+    };
+
+    (@try_from $bits:literal $(,)?) => {};
+
+    (@try_from $bits:literal, $type:ident $(,)?) => {
+        make_minint!(@impl_try_from $bits, $type);
+    };
+
+    (@try_from $bits:literal, $type:ident, $($more:ident),*) => {
+        make_minint!(@impl_try_from $bits, $type);
+        make_minint!(@try_from $bits, $($more),*);
+    };
+
     // ==== into ===============================================================
     (@impl_into $bits:literal, $type:ident) => {
         impl Into<$type> for VarUInt<$bits> {
@@ -326,34 +356,34 @@ macro_rules! make_minint {
     };
 
     // ==== start ==============================================================
-    ($type:ident, [ $($from_types:ident),* ], [ $($into_types:ident),* ], [ $($bits:literal),* ]) => {
-        make_minint!(@minint $type, [ $($from_types),* ], [ $($into_types),* ], $($bits),*);
+    ($type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], [ $($bits:literal),* ]) => {
+        make_minint!(@minint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($bits),*);
     };
 }
 
-make_minint!(u8, [], [u8, u16, u32, u64, u128],
+make_minint!(u8, [], [u8, u16, u32, u64, u128], [u8, u16, u32, u64, u128],
     [1, 2, 3, 4, 6, 7]);
-make_minint!(u8, [u8], [u8, u16, u32, u64, u128], [8]);
+make_minint!(u8, [u8], [u16, u32, u64, u128], [u8, u16, u32, u64, u128], [8]);
 
-make_minint!(u16, [u8], [u16, u32, u64, u128],
+make_minint!(u16, [u8], [u16, u32, u64, u128], [u16, u32, u64, u128],
     [9, 10, 11, 12, 13, 14, 15]);
-make_minint!(u16, [u8, u16], [u16, u32, u64, u128], [16]);
+make_minint!(u16, [u8, u16], [u32, u64, u128], [u16, u32, u64, u128], [16]);
 
-make_minint!(u32, [u8, u16], [u32, u64, u128],
+make_minint!(u32, [u8, u16], [u32, u64, u128], [u32, u64, u128],
     [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
-make_minint!(u32, [u8, u16, u32], [u32, u64, u128], [32]);
+make_minint!(u32, [u8, u16, u32], [u64, u128], [u32, u64, u128], [32]);
 
-make_minint!(u64, [u8, u16, u32], [u64, u128],
+make_minint!(u64, [u8, u16, u32], [u64, u128], [u64, u128],
     [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
      49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]);
-make_minint!(u64, [u8, u16, u32, u64], [u64, u128], [64]);
+make_minint!(u64, [u8, u16, u32, u64], [u128], [u64, u128], [64]);
 
-make_minint!(u128, [u8, u16, u32, u64], [u128],
+make_minint!(u128, [u8, u16, u32, u64], [], [u128],
     [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82,
      83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100,
      101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
      116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]);
-make_minint!(u128, [u8, u16, u32, u64, u128], [u128], [128]);
+make_minint!(u128, [u8, u16, u32, u64, u128], [], [u128], [128]);
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
