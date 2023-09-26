@@ -57,8 +57,104 @@ pub trait Intern {
 
 pub struct InternHelper<const N: u8> {}
 
-macro_rules! make_varuint {
-    (@impl_varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal) => {
+macro_rules! impl_varuint {
+    ////////////////////////////////////////////////////////////////////////////
+
+    (@loop
+        smaller_types: [ $($smaller_types:ident)* ],
+        fewer_bits: [ $($fewer_bits:literal)* ],
+        tail: []
+    ) => {};
+
+    (@loop
+        smaller_types: [ $($smaller_types:ident)* ],
+        fewer_bits: [ $($fewer_bits:literal)* ],
+        tail: [ $type:ident [ $($bits:literal)* ], $($tail:tt)* ]
+    ) => {
+        impl_varuint!(@loop_impl $type, [ $($bits)* ],
+            smaller_types: [ $($smaller_types)* ],
+            fewer_bits: [ $($fewer_bits)* ]);
+
+        impl_varuint!(@loop_into_bigger_types $type, [ $($fewer_bits)* $($bits)* ]);
+
+        impl_varuint!(@loop
+            smaller_types: [ $($smaller_types)* $type ],
+            fewer_bits: [ $($fewer_bits)* $($bits)* ],
+            tail: [ $($tail)* ]
+        );
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+
+    (@loop_into_bigger_types $type:ident, []) => {};
+
+    (@loop_into_bigger_types $type:ident, [ $bits:literal $($more_bits:literal)* ]) => {
+        impl Into<$type> for VarUInt<$bits>
+        where InternHelper::<{$bits}>: Intern {
+            #[inline]
+            fn into(self: Self) -> $type {
+                self.value.into()
+            }
+        }
+
+        impl_varuint!(@loop_into_bigger_types $type, [ $($more_bits)* ]);
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+
+    (@loop_impl $type:ident, [],
+        smaller_types: [ $($smaller_types:ident)* ],
+        fewer_bits: [ $($fewer_bits:literal)* ]
+    ) => {};
+
+    (@loop_impl $type:ident, [ $bits:literal ],
+        smaller_types: [ $($smaller_types:ident)* ],
+        fewer_bits: [ $($fewer_bits:literal)* ]
+    ) => {
+        impl_varuint!(@impl $type, $bits);
+        impl_varuint!(@from_type $type, $bits, $type);
+        impl_varuint!(@loop_smaller_types $type, $bits, [ $($smaller_types)* ]);
+        impl_varuint!(@loop_fewer_bits $type, $bits, [ $($fewer_bits)* ]);
+    };
+
+    (@loop_impl $type:ident, [ $bits:literal $($more_bits:literal)+ ],
+        smaller_types: [ $($smaller_types:ident)* ],
+        fewer_bits: [ $($fewer_bits:literal)* ]
+    ) => {
+        impl_varuint!(@impl $type, $bits);
+        impl_varuint!(@try_from_type $type, $bits);
+        impl_varuint!(@loop_smaller_types $type, $bits, [ $($smaller_types)* ]);
+        impl_varuint!(@loop_fewer_bits $type, $bits, [ $($fewer_bits)* ]);
+
+        impl_varuint!(@loop_impl $type, [ $($more_bits)* ],
+            smaller_types: [ $($smaller_types)* ],
+            fewer_bits: [ $($fewer_bits)* $bits ]);
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+
+    (@loop_smaller_types $type:ident, $bits:literal, []) => {};
+
+    (@loop_smaller_types $type:ident, $bits:literal, [ $smaller_type:ident $($smaller_types:ident)* ]) => {
+        impl_varuint!(@from_type $type, $bits, $smaller_type);
+        impl_varuint!(@try_into_type $type, $bits, $smaller_type);
+
+        impl_varuint!(@loop_smaller_types $type, $bits, [ $($smaller_types)* ]);
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+
+    (@loop_fewer_bits $type:ident, $bits:literal, []) => {};
+
+    (@loop_fewer_bits $type:ident, $bits:literal, [ $fewer_bits:literal $($more_fewer_bits:literal)* ]) => {
+        impl_varuint!(@from_bits $type, $bits, $fewer_bits);
+
+        impl_varuint!(@loop_fewer_bits $type, $bits, [ $($more_fewer_bits)* ]);
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+
+    (@impl $type:ident, $bits:literal) => {
         impl Intern for InternHelper<$bits> {
             type UInt = $type;
             const MIN:  Self::UInt = $type::MIN;
@@ -67,10 +163,6 @@ macro_rules! make_varuint {
             const ONE:  Self::UInt = 1;
             const BITS: u32 = $bits;
         }
-
-        make_varuint!(@from $bits, $($from_types),*);
-        make_varuint!(@try_from $bits, $($try_from_types),*);
-        make_varuint!(@into $bits, $($into_types),*);
 
         impl Add for VarUInt<$bits> {
             type Output = Self;
@@ -274,48 +366,35 @@ macro_rules! make_varuint {
         }
     };
 
-    (@varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ] $(,)?) => {};
-
-    (@varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal $(,)?) => {
-        make_varuint!(@impl_varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
-    };
-
-    (@varuint $type:ident, [ $($from_types:ident),* ], [ $($try_from_types:ident),* ], [ $($into_types:ident),* ], $bits:literal, $($more:literal),+) => {
-        make_varuint!(@impl_varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $bits);
-        make_varuint!(@varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($more),+);
-    };
-
-    // ==== from ===============================================================
-    (@impl_from $bits:literal, $type:ident) => {
-        impl From<$type> for VarUInt<$bits>
+    (@from_type $type:ident, $bits:literal, $smaller_type:ident) => {
+        impl From<$smaller_type> for VarUInt<$bits>
         where InternHelper::<{$bits}>: Intern {
             #[inline]
-            fn from(value: $type) -> Self {
+            fn from(value: $smaller_type) -> Self {
                 VarUInt { value: value.into() }
             }
         }
     };
 
-    (@from $bits:literal $(,)?) => {};
-
-    (@from $bits:literal, $type:ident $(,)?) => {
-        make_varuint!(@impl_from $bits, $type);
+    (@from_bits $type:ident, $bits:literal, $other_bits:literal) => {
+        impl From<VarUInt<$other_bits>> for VarUInt<$bits>
+        where InternHelper::<{$bits}>: Intern {
+            #[inline]
+            fn from(other: VarUInt<$other_bits>) -> Self {
+                VarUInt { value: other.value.into() }
+            }
+        }
     };
 
-    (@from $bits:literal, $type:ident, $($more:ident),*) => {
-        make_varuint!(@impl_from $bits, $type);
-        make_varuint!(@from $bits, $($more),*);
-    };
-
-    // ==== try from ===========================================================
-    (@impl_try_from $bits:literal, $type:ident) => {
-        impl TryFrom<$type> for VarUInt<$bits> {
+    (@try_from_type $type:ident, $bits:literal) => {
+        impl TryFrom<$type> for VarUInt<$bits>
+        where InternHelper::<{$bits}>: Intern {
             type Error = Error;
 
             #[inline]
-            fn try_from(value: $type) -> Result<Self, Self::Error> {
+            fn try_from(value: $type) -> Result<VarUInt<$bits>, Self::Error> {
                 if let Ok(value) = value.try_into() {
-                    if value > Self::MAX.value {
+                    if value > InternHelper::<{$bits}>::MAX {
                         return Err(Error::ValueTooBig);
                     }
                     return Ok(VarUInt { value });
@@ -325,107 +404,36 @@ macro_rules! make_varuint {
         }
     };
 
-    (@try_from $bits:literal $(,)?) => {};
+    (@try_into_type $type:ident, $bits:literal, $smaller_type:ident) => {
+        impl TryInto<$smaller_type> for VarUInt<$bits> {
+            type Error = Error;
 
-    (@try_from $bits:literal, $type:ident $(,)?) => {
-        make_varuint!(@impl_try_from $bits, $type);
-    };
-
-    (@try_from $bits:literal, $type:ident, $($more:ident),*) => {
-        make_varuint!(@impl_try_from $bits, $type);
-        make_varuint!(@try_from $bits, $($more),*);
-    };
-
-    // ==== into ===============================================================
-    (@impl_into $bits:literal, $type:ident) => {
-        impl Into<$type> for VarUInt<$bits> {
             #[inline]
-            fn into(self) -> $type {
-                self.value as $type
+            fn try_into(self) -> Result<$smaller_type, Self::Error> {
+                if let Ok(value) = self.value.try_into() {
+                    return Ok(value);
+                }
+                return Err(Error::ValueTooBig);
             }
         }
     };
 
-    (@into $bits:literal $(,)?) => {};
+    ////////////////////////////////////////////////////////////////////////////
 
-    (@into $bits:literal, $type:ident $(,)?) => {
-        make_varuint!(@impl_into $bits, $type);
-    };
+    () => {};
 
-    (@into $bits:literal, $type:ident, $($more:ident),*) => {
-        make_varuint!(@impl_into $bits, $type);
-        make_varuint!(@into $bits, $($more),*);
-    };
-
-    // ==== start ==============================================================
-    ($type:ident,
-        from: [ $($from_types:ident),* ],
-        try_from: [ $($try_from_types:ident),* ],
-        into: [ $($into_types:ident),* ],
-        bits: [ $($bits:literal),* ]
-    ) => {
-        make_varuint!(@varuint $type, [ $($from_types),* ], [ $($try_from_types),* ], [ $($into_types),* ], $($bits),*);
+    ($type:ident [ $($bits:literal)* ] $($tail:tt)*) => {
+        impl_varuint!(@loop smaller_types: [], fewer_bits: [], tail: [ $type [ $($bits)* ] $($tail)* ]);
     };
 }
 
-make_varuint!(u8,
-    from: [],
-    try_from: [u8, u16, u32, u64, u128],
-    into: [u8, u16, u32, u64, u128],
-    bits: [1, 2, 3, 4, 6, 7]);
-make_varuint!(u8,
-    from: [u8],
-    try_from: [u16, u32, u64, u128],
-    into: [u8, u16, u32, u64, u128],
-    bits: [8]);
-
-make_varuint!(u16,
-    from: [u8],
-    try_from: [u16, u32, u64, u128],
-    into: [u16, u32, u64, u128],
-    bits: [9, 10, 11, 12, 13, 14, 15]);
-make_varuint!(u16,
-    from: [u8, u16],
-    try_from: [u32, u64, u128],
-    into: [u16, u32, u64, u128],
-    bits: [16]);
-
-make_varuint!(u32,
-    from: [u8, u16],
-    try_from: [u32, u64, u128],
-    into: [u32, u64, u128],
-    bits: [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
-make_varuint!(u32,
-    from: [u8, u16, u32],
-    try_from: [u64, u128],
-    into: [u32, u64, u128],
-    bits: [32]);
-
-make_varuint!(u64,
-    from: [u8, u16, u32],
-    try_from: [u64, u128],
-    into: [u64, u128],
-    bits: [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-           49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]);
-make_varuint!(u64,
-    from: [u8, u16, u32, u64],
-    try_from: [u128],
-    into: [u64, u128],
-    bits: [64]);
-
-make_varuint!(u128,
-    from: [u8, u16, u32, u64],
-    try_from: [],
-    into: [u128],
-    bits: [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82,
-           83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100,
-           101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
-           116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]);
-make_varuint!(u128,
-    from: [u8, u16, u32, u64, u128],
-    try_from: [],
-    into: [u128],
-    bits: [128]);
+impl_varuint! {
+    u8   [1 2 3 4 5 6 7 8],
+    u16  [9 10 11 12 13 14 15 16],
+    u32  [17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32],
+    u64  [33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64],
+    u128 [65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128],
+}
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
@@ -454,36 +462,3 @@ impl<const N: u8> Display for VarUInt<N> where InternHelper::<{N}>: Intern {
         Display::fmt(&self.value, f)
     }
 }
-/*
-impl<const N: u8, const M: u8> TryFrom<VarUInt<M>> for VarUInt<N> where Assert::<{M > N}>: IsTrue {
-    type Error = Error;
-
-    fn try_from(value: VarUInt<M>) -> Result<Self, Self::Error> {
-        if let Ok(value) = value.try_into() {
-            if value > Self::MAX.value {
-                return Err(Error::ValueTooBig);
-            }
-            return Ok(VarUInt { value });
-        }
-        return Err(Error::ValueTooBig);
-    }
-}
-*/
-/*
-impl<const N: u8, const M: u8> From<VarUInt<M>> for VarUInt<N>
-where InternHelper::<{N}>: Intern,
-      InternHelper::<{M}>: Intern,
-      Assert::<{M < N}>: IsTrue {
-    #[inline]
-    fn from(value: VarUInt<M>) -> Self {
-        Self { value: value.value.into() }
-    }
-}
-*/
-/*
-enum Assert<const COND: bool> {}
-
-trait IsTrue {}
-
-impl IsTrue for Assert<true> {}
-*/
