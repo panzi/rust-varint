@@ -9,6 +9,8 @@ use std::ops::{
     Shl, ShlAssign, Shr, ShrAssign,
 };
 
+use std::cmp::PartialEq;
+
 use std::fmt::{
     Display,
     Debug,
@@ -372,6 +374,24 @@ macro_rules! impl_varuint {
             #[inline]
             fn from(value: $smaller_type) -> Self {
                 VarUInt { value: value.into() }
+            }
+        }
+
+        impl PartialEq<$smaller_type> for VarUInt<$bits>
+        where InternHelper::<{$bits}>: Intern {
+            #[inline]
+            fn eq(&self, rhs: &$smaller_type) -> bool {
+                let rhs: <InternHelper::<$bits> as Intern>::UInt = (*rhs).into();
+                self.value == rhs
+            }
+        }
+
+        impl PartialEq<VarUInt<$bits>> for $smaller_type
+        where InternHelper::<{$bits}>: Intern {
+            #[inline]
+            fn eq(&self, rhs: &VarUInt<$bits>) -> bool {
+                let lhs: <InternHelper::<$bits> as Intern>::UInt = (*self).into();
+                lhs == rhs.value
             }
         }
     };

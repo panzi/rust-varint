@@ -2,3 +2,12 @@
 name = "varint"
 version = "0.1.0"
 edition = "2021"
+authors = ["Mathias Panzenböck"]
+
+[lib]
+name = "varint"
+path = "src/lib.rs"
+
+[[bin]]
+name = "demo"
+path = "src/demo.rs"
